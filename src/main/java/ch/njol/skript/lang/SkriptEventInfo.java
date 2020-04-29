@@ -49,13 +49,15 @@ public final class SkriptEventInfo<E extends SkriptEvent> extends SyntaxElementI
 	 * @param name Capitalised name of the event without leading "On" which is added automatically (Start the name with an asterisk to prevent this).
 	 * @param patterns
 	 * @param c The SkriptEvent's class
+	 * @param originClassPath The class path for the origin of this event.
 	 * @param events The Bukkit-Events this SkriptEvent listens to
 	 */
-	public SkriptEventInfo(String name, final String[] patterns, final Class<E> c, final Class<? extends Event>[] events) {
-		super(patterns, c);
+	public SkriptEventInfo(String name, final String[] patterns, final Class<E> c, final String originClassPath, final Class<? extends Event>[] events) {
+		super(patterns, c, originClassPath);
 		assert name != null;
 		assert patterns != null && patterns.length > 0;
 		assert c != null;
+		assert originClassPath != null;
 		assert events != null && events.length > 0;
 		
 		for (int i = 0; i < events.length; i++) {
@@ -124,7 +126,7 @@ public final class SkriptEventInfo<E extends SkriptEvent> extends SyntaxElementI
 	}
 
 	/**
-	 * A non critical ID remapping for syntax elements register using the a class multiple times.
+	 * A non critical ID remapping for syntax elements register using the same class multiple times.
 	 *
 	 * Only used for Skript's documentation.
 	 *
@@ -138,7 +140,7 @@ public final class SkriptEventInfo<E extends SkriptEvent> extends SyntaxElementI
 	}
 
 	/**
-	 * Other plugin dependencies for a syntax element
+	 * Other plugin dependencies for this SkriptEvent.
 	 *
 	 * Only used for Skript's documentation.
 	 *
@@ -150,6 +152,7 @@ public final class SkriptEventInfo<E extends SkriptEvent> extends SyntaxElementI
 		this.requiredPlugins = pluginNames;
 		return this;
 	}
+
 	
 	public String getId() {
 		return id;

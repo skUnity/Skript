@@ -55,7 +55,6 @@ import ch.njol.skript.localization.LanguageChangeListener;
 import ch.njol.skript.localization.Message;
 import ch.njol.skript.registrations.Classes;
 import ch.njol.skript.registrations.Converters;
-import ch.njol.skript.util.Color;
 import ch.njol.yggdrasil.Fields;
 
 /**
@@ -139,7 +138,8 @@ public class ChatMessages {
 		
 		if (code.isLocalized()) {
 			if (code.getColorCode() != null) { // Color code!
-				for (String name : Language.getList(Color.LANGUAGE_NODE + "." + langName + ".names")) {
+				// Avoid dependency on SkriptColor
+				for (String name : Language.getList("colors." + langName + ".names")) {
 					codes.put(name, code);
 				}
 			} else { // Not color code
@@ -242,6 +242,7 @@ public class ChatMessages {
 					} else {
 						name = tag;
 					}
+					name = name.toLowerCase(); // Tags are case-insensitive
 					
 					code = codes.get(name);
 					if (code != null) { // ... and if the tag IS really valid
@@ -280,6 +281,10 @@ public class ChatMessages {
 				}
 				
 				char color = chars[i + 1];
+				if (color >= colorChars.length) { // Invalid Unicode color character
+					curStr.append(c);
+					continue;
+				}
 				code = colorChars[color];
 				if (code == null) {
 					curStr.append(c).append(color); // Invalid formatting char, plain append
@@ -450,7 +455,6 @@ public class ChatMessages {
 			to.hoverEvent = from.hoverEvent;
 	}
 
-
 	public static void shareStyles(MessageComponent[] components) {
 		MessageComponent previous = null;
 		for (MessageComponent c : components) {
@@ -483,5 +487,24 @@ public class ChatMessages {
 		
 		addonCodes.add(code); // So that language reloads don't break everything
 		registerChatCode(code);
+	}
+	
+	/**
+	 * Strips all styles from given string.
+	 * @param text String to strip styles from.
+	 * @return A string without styles.
+	 */
+	public static String stripStyles(String text) {
+		List<MessageComponent> components = parse(text);
+		StringBuilder sb = new StringBuilder();
+		for (MessageComponent component : components) {
+			sb.append(component.text);
+		}
+		String plain = sb.toString();
+		
+		// To be extra safe, strip <, >, § and &; protects against bugs in parser
+		plain = plain.replace("<", "").replace(">", "").replace("§", "").replace("&", "");
+		assert plain != null;
+		return plain;
 	}
 }

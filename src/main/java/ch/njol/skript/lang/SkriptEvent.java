@@ -19,12 +19,11 @@
  */
 package ch.njol.skript.lang;
 
-import org.bukkit.event.Event;
-
 import ch.njol.skript.Skript;
 import ch.njol.skript.events.EvtClick;
 import ch.njol.skript.lang.SkriptParser.ParseResult;
 import ch.njol.util.Kleenean;
+import org.bukkit.event.Event;
 
 /**
  * A SkriptEvent is like a condition. It is called when any of the registered events occurs.
@@ -59,6 +58,15 @@ public abstract class SkriptEvent implements SyntaxElement, Debuggable {
 	 * @return true if this is SkriptEvent is represented by the Bukkit Event or false if not
 	 */
 	public abstract boolean check(Event e);
+	
+	/**
+	 * Script loader checks this before loading items in event. If false is
+	 * returned, they are not parsed and the event is not registered.
+	 * @return If this event should be loaded.
+	 */
+	public boolean shouldLoadEvent() {
+		return true;
+	}
 	
 	@Override
 	public String toString() {

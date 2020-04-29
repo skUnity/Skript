@@ -21,6 +21,7 @@ package ch.njol.skript.classes.data;
 
 import java.util.Arrays;
 
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.entity.Entity;
@@ -181,7 +182,9 @@ public class DefaultChangers {
 	};
 	
 	public final static Changer<Inventory> inventoryChanger = new Changer<Inventory>() {
-		@SuppressWarnings("unchecked")
+		
+		private Material[] cachedMaterials = Material.values();
+		
 		@Override
 		@Nullable
 		public Class<? extends Object>[] acceptChange(final ChangeMode mode) {
@@ -201,16 +204,6 @@ public class DefaultChangers {
 				switch (mode) {
 					case DELETE:
 						invi.clear();
-						if (ItemType.oldInvSize && invi instanceof PlayerInventory) {
-							((PlayerInventory) invi).setArmorContents(new ItemStack[4]);
-							if (((PlayerInventory) invi).getHolder() instanceof Player) {
-								final Player p = (Player) ((PlayerInventory) invi).getHolder();
-								if (invi.equals(p.getOpenInventory().getBottomInventory()))
-									p.getOpenInventory().setCursor(null);
-								if (p.getOpenInventory().getTopInventory() instanceof CraftingInventory)
-									p.getOpenInventory().getTopInventory().clear();
-							}
-						}
 						break;
 					case SET:
 						invi.clear();
@@ -251,6 +244,26 @@ public class DefaultChangers {
 					case REMOVE:
 					case REMOVE_ALL:
 						assert delta != null;
+						if (delta.length == cachedMaterials.length) {
+							// Potential fast path: remove all items -> clear inventory
+							boolean equal = true;
+							for (int i = 0; i < delta.length; i++) {
+								if (!(delta[i] instanceof ItemType)) {
+									equal = false;
+									break; // Not an item, take slow path
+								}
+								if (((ItemType) delta[i]).getMaterial() != cachedMaterials[i]) {
+									equal = false;
+									break;
+								}
+							}
+							if (equal) { // Take fast path, break out before slow one
+								invi.clear();
+								break;
+							}
+						}
+						
+						// Slow path
 						for (final Object d : delta) {
 							if (d instanceof Inventory) {
 								assert mode == ChangeMode.REMOVE;
@@ -266,15 +279,15 @@ public class DefaultChangers {
 					case RESET:
 						assert false;
 				}
-				if (invi.getHolder() instanceof Player) {
-					((Player) invi.getHolder()).updateInventory();
+				InventoryHolder holder = invi.getHolder();
+				if (holder instanceof Player) {
+					((Player) holder).updateInventory();
 				}
 			}
 		}
 	};
 	
 	public final static Changer<Block> blockChanger = new Changer<Block>() {
-		@SuppressWarnings("unchecked")
 		@Override
 		@Nullable
 		public Class<?>[] acceptChange(final ChangeMode mode) {
@@ -285,7 +298,6 @@ public class DefaultChangers {
 			return CollectionUtils.array(ItemType[].class, Inventory[].class);
 		}
 		
-		@SuppressWarnings("deprecation")
 		@Override
 		public void change(final Block[] blocks, final @Nullable Object[] delta, final ChangeMode mode) {
 			for (final Block block : blocks) {
@@ -296,7 +308,7 @@ public class DefaultChangers {
 						((ItemType) delta[0]).getBlock().setBlock(block, true);
 						break;
 					case DELETE:
-						block.setTypeId(0, true);
+						block.setType(Material.AIR, true);
 						break;
 					case ADD:
 					case REMOVE:
@@ -306,8 +318,6 @@ public class DefaultChangers {
 						if (!(state instanceof InventoryHolder))
 							break;
 						final Inventory invi = ((InventoryHolder) state).getInventory();
-						if (invi == null)
-							continue;
 						if (mode == ChangeMode.ADD) {
 							for (final Object d : delta) {
 								if (d instanceof Inventory) {

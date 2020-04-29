@@ -46,7 +46,7 @@ import ch.njol.skript.util.slot.Slot;
 import ch.njol.util.Kleenean;
 
 @Name("Inventory Slot")
-@Description({"Represents a slot in a inventory. It can be used to change the item in a inventory too."})
+@Description({"Represents a slot in an inventory. It can be used to change the item in an inventory too."})
 @Examples({"if slot 0 of player is air:",
 	"\tset slot 0 of player to 2 stones",
 	"\tremove 1 stone from slot 0 of player",
@@ -113,24 +113,6 @@ public class ExprInventorySlot extends SimpleExpression<Slot> {
 	@Override
 	public Class<? extends Slot> getReturnType() {
 		return Slot.class;
-	}
-	
-	@Override
-	@Nullable
-	public Object[] beforeChange(Expression<?> changed, @Nullable Object[] delta) {
-		if (delta == null) // Nothing to nothing
-			return null;
-		Object first = delta[0];
-		if (first == null) // ConvertedExpression might cause this
-			return null;
-		
-		// Slots must be transformed to item stacks when writing to variables
-		// Documentation by Njol states so, plus it is convenient
-		if (changed instanceof Variable && first instanceof Slot) {
-			return new ItemStack[] {((Slot) first).getItem()};
-		}
-		
-		return delta;
 	}
 	
 	@Override

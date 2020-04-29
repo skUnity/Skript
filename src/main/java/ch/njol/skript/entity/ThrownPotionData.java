@@ -55,13 +55,12 @@ public class ThrownPotionData extends EntityData<ThrownPotion> {
 	protected boolean init(final Literal<?>[] exprs, final int matchedPattern, final ParseResult parseResult) {
 		if (exprs.length > 0 && exprs[0] != null) {
 			if ((Converters.convert((ItemType[]) exprs[0].getAll(), ItemType.class, new Converter<ItemType, ItemType>() {
-				@SuppressWarnings("deprecation")
 				@Override
 				@Nullable
 				public ItemType convert(final ItemType t) {
 					ItemType r = null;
 					for (final ItemData d : t.getTypes()) {
-						if (d.getId() == Material.POTION.getId()) {
+						if (d.getType() == Material.POTION) {
 							if (r == null)
 								r = new ItemType(d);
 							else
@@ -105,7 +104,10 @@ public class ThrownPotionData extends EntityData<ThrownPotion> {
 		if (types != null) {
 			final ItemType t = CollectionUtils.getRandom(types);
 			assert t != null;
-			entity.setItem(t.getRandom());
+			ItemStack i = t.getRandom();
+			if (i == null)
+				return; // Missing item, can't make thrown potion of it
+			entity.setItem(i);
 		}
 	}
 	
@@ -147,10 +149,11 @@ public class ThrownPotionData extends EntityData<ThrownPotion> {
 	@Override
 	@Deprecated
 	protected boolean deserialize(final String s) {
-		if (s.isEmpty())
-			return true;
-		types = ItemType.deserialize(s);
-		return types != null;
+		throw new UnsupportedOperationException("old serialization is no longer supported");
+//		if (s.isEmpty())
+//			return true;
+//		types = ItemType.deserialize(s);
+//		return types != null;
 	}
 	
 	@Override

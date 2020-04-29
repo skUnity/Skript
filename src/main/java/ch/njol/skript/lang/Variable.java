@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
@@ -33,9 +32,9 @@ import java.util.TreeMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
-import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
 import ch.njol.skript.Skript;
@@ -54,6 +53,7 @@ import ch.njol.skript.registrations.Comparators;
 import ch.njol.skript.registrations.Converters;
 import ch.njol.skript.util.StringMode;
 import ch.njol.skript.util.Utils;
+import ch.njol.skript.variables.TypeHints;
 import ch.njol.skript.variables.Variables;
 import ch.njol.util.Checker;
 import ch.njol.util.Kleenean;
@@ -66,8 +66,9 @@ import ch.njol.util.coll.iterator.EmptyIterator;
  * @author Peter Güttinger
  */
 public class Variable<T> implements Expression<T> {
-	
-	public final static String SEPARATOR = "::";
+
+	private final static String SINGLE_SEPARATOR_CHAR = ":";
+	public final static String SEPARATOR = SINGLE_SEPARATOR_CHAR + SINGLE_SEPARATOR_CHAR;
 	public final static String LOCAL_VARIABLE_TOKEN = "_";
 	
 	/**
@@ -110,7 +111,7 @@ public class Variable<T> implements Expression<T> {
 	 * @param printErrors Whether to print errors when they are encountered
 	 * @return true if the name is valid, false otherwise.
 	 */
-	public final static boolean isValidVariableName(String name, final boolean allowListVariable, final boolean printErrors) {
+	public static boolean isValidVariableName(String name, final boolean allowListVariable, final boolean printErrors) {
 		name = name.startsWith(LOCAL_VARIABLE_TOKEN) ? "" + name.substring(LOCAL_VARIABLE_TOKEN.length()).trim() : "" + name.trim();
 		if (!allowListVariable && name.contains(SEPARATOR)) {
 			if (printErrors)
@@ -121,17 +122,44 @@ public class Variable<T> implements Expression<T> {
 				Skript.error("A variable's name must neither start nor end with the separator '" + SEPARATOR + "' (error in variable {" + name + "})");
 			return false;
 		} else if (name.contains("*") && (!allowListVariable || name.indexOf("*") != name.length() - 1 || !name.endsWith(SEPARATOR + "*"))) {
-			if (printErrors) {
-				if (name.indexOf("*") == 0)
-					Skript.error("[2.0] Local variables now start with an underscore, e.g. {_local variable}. The asterisk is reserved for list variables. (error in variable {" + name + "})");
-				else
-					Skript.error("A variable's name must not contain any asterisks except at the end after '" + SEPARATOR + "' to denote a list variable, e.g. {variable" + SEPARATOR + "*} (error in variable {" + name + "})");
+			List<Integer> asterisks = new ArrayList<>();
+			List<Integer> percents = new ArrayList<>();
+			for (int i = 0; i < name.length(); i++) {
+				char c = name.charAt(i);
+				if (c == '*')
+					asterisks.add(i);
+				else if (c == '%')
+					percents.add(i);
 			}
-			return false;
+			int count = asterisks.size();
+			int index = 0;
+			for (int i = 0; i < percents.size(); i += 2) {
+				if (index == asterisks.size() || i+1 == percents.size()) // Out of bounds 
+					break;
+				int lb = percents.get(i), ub = percents.get(i+1);
+				// Continually decrement asterisk count by checking if any asterisks in current range 
+				while (index < asterisks.size() && lb < asterisks.get(index) && asterisks.get(index) < ub) {
+					count--;
+					index++;
+				}
+			}
+			if (!(count == 0 || (count == 1 && name.endsWith(SEPARATOR + "*")))) {
+				if (printErrors) {
+					if (name.indexOf("*") == 0)
+						Skript.error("[2.0] Local variables now start with an underscore, e.g. {_local variable}. The asterisk is reserved for list variables. (error in variable {" + name + "})");
+					else
+						Skript.error("A variable's name must not contain any asterisks except at the end after '" + SEPARATOR + "' to denote a list variable, e.g. {variable" + SEPARATOR + "*} (error in variable {" + name + "})");
+				}
+				return false;
+			}
 		} else if (name.contains(SEPARATOR + SEPARATOR)) {
 			if (printErrors)
 				Skript.error("A variable's name must not contain the separator '" + SEPARATOR + "' multiple times in a row (error in variable {" + name + "})");
 			return false;
+		} else if (name.replace(SEPARATOR, "").contains(SINGLE_SEPARATOR_CHAR)) {
+			if (printErrors)
+				Skript.warning("If you meant to make the variable {" + name + "} a list, its name should contain '"
+						+ SEPARATOR + "'. Having a single '" + SINGLE_SEPARATOR_CHAR + "' does nothing!");
 		}
 		return true;
 	}
@@ -151,7 +179,53 @@ public class Variable<T> implements Expression<T> {
 		final VariableString vs = VariableString.newInstance(name.startsWith(LOCAL_VARIABLE_TOKEN) ? "" + name.substring(LOCAL_VARIABLE_TOKEN.length()).trim() : name, StringMode.VARIABLE_NAME);
 		if (vs == null)
 			return null;
-		return new Variable<>(vs, types, name.startsWith(LOCAL_VARIABLE_TOKEN), name.endsWith(SEPARATOR + "*"), null);
+		
+		boolean isLocal = name.startsWith(LOCAL_VARIABLE_TOKEN);
+		boolean isPlural = name.endsWith(SEPARATOR + "*");
+		
+		// Check for local variable type hints
+		if (isLocal && vs.isSimple()) { // Only variable names we fully know already
+			Class<?> hint = TypeHints.get(vs.toString());
+			if (hint != null && !hint.equals(Object.class)) { // Type hint available
+				// See if we can get correct type without conversion
+				for (Class<? extends T> type : types) {
+					assert type != null;
+					if (type.isAssignableFrom(hint)) {
+						// Hint matches, use variable with exactly correct type
+						return new Variable<>(vs, CollectionUtils.array(type), isLocal, isPlural, null);
+					}
+				}
+				
+				// Or with conversion?
+				for (Class<? extends T> type : types) {
+					assert type != null;
+					if (Converters.converterExists(hint, type)) {
+						// Hint matches, even though converter is needed
+						return new Variable<>(vs, CollectionUtils.array(type), isLocal, isPlural, null);
+					}
+					
+					// Special cases
+					if (type.isAssignableFrom(World.class) && hint.isAssignableFrom(String.class)) {
+						// String->World conversion is weird spaghetti code
+						return new Variable<>(vs, types, isLocal, isPlural, null);
+					} else if (type.isAssignableFrom(Player.class) && hint.isAssignableFrom(String.class)) {
+						// String->Player conversion is not available at this point
+						return new Variable<>(vs, types, isLocal, isPlural, null);
+					}
+				}
+				
+				// Hint exists and does NOT match any types requested
+				ClassInfo<?>[] infos = new ClassInfo[types.length];
+				for (int i = 0; i < types.length; i++) {
+					infos[i] = Classes.getExactClassInfo(types[i]);
+				}
+				Skript.warning("Variable '{_" + name + "}' is " + Classes.toString(Classes.getExactClassInfo(hint))
+						+ ", not " + Classes.toString(infos, false));
+				// Fall back to not having any type hints
+			}
+		}
+		
+		return new Variable<>(vs, types, isLocal, isPlural, null);
 	}
 	
 	@Override
@@ -198,7 +272,7 @@ public class Variable<T> implements Expression<T> {
 	 * Gets the value of this variable as stored in the variables map.
 	 */
 	@Nullable
-	private Object getRaw(final Event e) {
+	public Object getRaw(final Event e) {
 		final String n = name.toString(e);
 		if (n.endsWith(Variable.SEPARATOR + "*") != list) // prevents e.g. {%expr%} where "%expr%" ends with "::*" from returning a Map
 			return null;
@@ -302,8 +376,8 @@ public class Variable<T> implements Expression<T> {
 	
 	@Override
 	public Iterator<T> iterator(final Event e) {
-		if (!list)
-			throw new SkriptAPIException("");
+		//if (!list)
+		//	throw new SkriptAPIException("");
 		final String name = StringUtils.substring(this.name.toString(e), 0, -1);
 		final Object val = Variables.getVariable(name + "*", e, local);
 		if (val == null)
@@ -519,10 +593,15 @@ public class Variable<T> implements Expression<T> {
 								final Class<?> c = d.getClass();
 								assert c != null;
 								ci = Classes.getSuperClassInfo(c);
-								//Mirre Start
-								if (ci.getMath() != null || d instanceof Number)
+								
+								if (ci.getMath() != null)
 									o = d;
-								//Mirre End
+								if (d instanceof Number) { // Nonexistent variable: add/subtract
+									if (mode == ChangeMode.REMOVE) // Variable is delta negated
+										o = -((Number) d).doubleValue(); // Hopefully enough precision
+									else // Variable is now what was added to it
+										o = d;
+								}
 								changed = true;
 								continue;
 							}

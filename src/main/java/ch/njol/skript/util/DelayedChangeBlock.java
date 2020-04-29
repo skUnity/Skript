@@ -24,6 +24,7 @@ import java.util.List;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -32,37 +33,49 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.PistonMoveReaction;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.Vector;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 
+import com.destroystokyo.paper.block.BlockSoundGroup;
+
 import ch.njol.skript.Skript;
+import ch.njol.skript.bukkitutil.block.BlockCompat;
+import ch.njol.skript.bukkitutil.block.MagicBlockCompat;
 
 /**
- * A block that gets all data from the world, but either delays any changes by 1 tick of reflects them on a given BlockState depending on which constructor is used.
+ * A block that gets all data from the world, but either delays
+ * any changes by 1 tick of reflects them on a given BlockState
+ * depending on which constructor is used.
  * 
- * @author Peter Güttinger
  */
-@SuppressWarnings("deprecation")
-@NonNullByDefault(false)
 public class DelayedChangeBlock implements Block {
+	
+	private static final boolean ISPASSABLE_METHOD_EXISTS = Skript.methodExists(Block.class, "isPassable");
 	
 	final Block b;
 	@Nullable
 	private final BlockState newState;
+	private final boolean isPassable;
 	
 	public DelayedChangeBlock(final Block b) {
-		assert b != null;
-		this.b = b;
-		newState = null;
+		this(b, null);
 	}
 	
-	public DelayedChangeBlock(final Block b, final BlockState newState) {
+	public DelayedChangeBlock(final Block b, final @Nullable BlockState newState) {
 		assert b != null;
 		this.b = b;
 		this.newState = newState;
+		if (ISPASSABLE_METHOD_EXISTS && newState != null)
+			this.isPassable = newState.getBlock().isPassable();
+		else
+			this.isPassable = false;
 	}
 	
 	@Override
@@ -85,9 +98,14 @@ public class DelayedChangeBlock implements Block {
 		b.removeMetadata(metadataKey, owningPlugin);
 	}
 	
+	@SuppressWarnings("deprecation")
 	@Override
 	public byte getData() {
 		return b.getData();
+	}
+	
+	public void setData(byte data) throws Throwable {
+		MagicBlockCompat.setDataMethod.invokeExact(b, data);
 	}
 	
 	@Override
@@ -108,11 +126,6 @@ public class DelayedChangeBlock implements Block {
 	@Override
 	public Material getType() {
 		return b.getType();
-	}
-	
-	@Override
-	public int getTypeId() {
-		return b.getTypeId();
 	}
 	
 	@Override
@@ -161,34 +174,6 @@ public class DelayedChangeBlock implements Block {
 	}
 	
 	@Override
-	public void setData(final byte data) {
-		if (newState != null) {
-			newState.setRawData(data);
-		} else {
-			Bukkit.getScheduler().scheduleSyncDelayedTask(Skript.getInstance(), new Runnable() {
-				@Override
-				public void run() {
-					b.setData(data);
-				}
-			});
-		}
-	}
-	
-	@Override
-	public void setData(final byte data, final boolean applyPhysics) {
-		if (newState != null) {
-			newState.setRawData(data);
-		} else {
-			Bukkit.getScheduler().scheduleSyncDelayedTask(Skript.getInstance(), new Runnable() {
-				@Override
-				public void run() {
-					b.setData(data, applyPhysics);
-				}
-			});
-		}
-	}
-	
-	@Override
 	public void setType(final Material type) {
 		if (newState != null) {
 			newState.setType(type);
@@ -202,58 +187,7 @@ public class DelayedChangeBlock implements Block {
 		}
 	}
 	
-	@Override
-	public boolean setTypeId(final int type) {
-		final BlockState newState = this.newState;
-		if (newState != null) {
-			newState.setTypeId(type);
-			return newState.getTypeId() != getTypeId();
-		} else {
-			Bukkit.getScheduler().scheduleSyncDelayedTask(Skript.getInstance(), new Runnable() {
-				@Override
-				public void run() {
-					b.setTypeId(type);
-				}
-			});
-			return true;
-		}
-	}
-	
-	@Override
-	public boolean setTypeId(final int type, final boolean applyPhysics) {
-		final BlockState newState = this.newState;
-		if (newState != null) {
-			newState.setTypeId(type);
-			return newState.getTypeId() != getTypeId();
-		} else {
-			Bukkit.getScheduler().scheduleSyncDelayedTask(Skript.getInstance(), new Runnable() {
-				@Override
-				public void run() {
-					b.setTypeId(type, applyPhysics);
-				}
-			});
-			return true;
-		}
-	}
-	
-	@Override
-	public boolean setTypeIdAndData(final int type, final byte data, final boolean applyPhysics) {
-		final BlockState newState = this.newState;
-		if (newState != null) {
-			newState.setTypeId(type);
-			newState.setRawData(data);
-			return newState.getTypeId() != getTypeId() || newState.getRawData() != getData();
-		} else {
-			Bukkit.getScheduler().scheduleSyncDelayedTask(Skript.getInstance(), new Runnable() {
-				@Override
-				public void run() {
-					b.setTypeIdAndData(type, data, applyPhysics);
-				}
-			});
-			return true;
-		}
-	}
-	
+	@Nullable
 	@Override
 	public BlockFace getFace(final Block block) {
 		return b.getFace(block);
@@ -262,6 +196,11 @@ public class DelayedChangeBlock implements Block {
 	@Override
 	public BlockState getState() {
 		return b.getState();
+	}	
+
+	@Override
+	public BlockState getState(boolean useSnapshot) {
+		return b.getState(useSnapshot);
 	}
 	
 	@Override
@@ -306,12 +245,16 @@ public class DelayedChangeBlock implements Block {
 	
 	@Override
 	public boolean isEmpty() {
-		return getTypeId() == 0;
+		Material type = getType();
+		assert type != null;
+		return BlockCompat.INSTANCE.isEmpty(type);
 	}
 	
 	@Override
 	public boolean isLiquid() {
-		return getType() == Material.WATER || getType() == Material.STATIONARY_WATER || getType() == Material.LAVA || getType() == Material.STATIONARY_LAVA;
+		Material type = getType();
+		assert type != null;
+		return BlockCompat.INSTANCE.isLiquid(type);
 	}
 	
 	@Override
@@ -369,8 +312,9 @@ public class DelayedChangeBlock implements Block {
 		return b.getDrops(tool);
 	}
 	
+	@Nullable
 	@Override
-	public Location getLocation(final Location loc) {
+	public Location getLocation(final @Nullable Location loc) {
 		if (loc != null) {
 			loc.setWorld(getWorld());
 			loc.setX(getX());
@@ -383,9 +327,56 @@ public class DelayedChangeBlock implements Block {
 	}
 
 	@Override
-	public void setType(Material arg0, boolean arg1) {
-		// TODO Auto-generated method stub
-		
+	public void setType(Material type, boolean applyPhysics) {
+		if (newState != null) {
+			newState.setType(type);
+		} else {
+			Bukkit.getScheduler().scheduleSyncDelayedTask(Skript.getInstance(), new Runnable() {
+				@Override
+				public void run() {
+					b.setType(type, applyPhysics);
+				}
+			});
+		}
+	}
+
+	@Override
+	public BlockData getBlockData() {
+		return b.getBlockData();
+	}
+
+	@Override
+	public void setBlockData(BlockData data) {
+		setBlockData(data, true);
+	}
+
+	@Override
+	public void setBlockData(BlockData data, boolean applyPhysics) {
+		if (newState != null) {
+			newState.setBlockData(data);
+		} else {
+			b.setBlockData(data, applyPhysics);
+		}
 	}
 	
+	@Nullable
+	@Override
+	public RayTraceResult rayTrace(Location start, Vector direction, double maxDistance, FluidCollisionMode fluidCollisionMode) {
+		return b.rayTrace(start, direction, maxDistance, fluidCollisionMode);
+	}
+	
+	@Override
+	public boolean isPassable() {
+		return isPassable;
+	}
+
+	@Override
+	public BoundingBox getBoundingBox() {
+		return b.getBoundingBox();
+	}
+
+	@Override
+	public BlockSoundGroup getSoundGroup() {
+		return b.getSoundGroup();
+	}
 }

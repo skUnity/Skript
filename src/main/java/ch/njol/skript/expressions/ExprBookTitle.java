@@ -19,6 +19,8 @@
  */
 package ch.njol.skript.expressions;
 
+import ch.njol.skript.aliases.Aliases;
+import ch.njol.skript.aliases.ItemType;
 import ch.njol.skript.classes.Changer;
 import ch.njol.skript.doc.Description;
 import ch.njol.skript.doc.Examples;
@@ -34,15 +36,17 @@ import org.bukkit.inventory.meta.BookMeta;
 import org.eclipse.jdt.annotation.Nullable;
 
 @Name("Book Title")
-@Description("The title of a book")
+@Description("The title of a book.")
 @Examples({"on book sign:",
-			"	message \"Book Title: %title of event-item%\""})
+			"\tmessage \"Book Title: %title of event-item%\""})
 @Since("2.2-dev31")
-public class ExprBookTitle extends SimplePropertyExpression<ItemStack,String> {
+public class ExprBookTitle extends SimplePropertyExpression<ItemType, String> {
 	
 	static {
-		register(ExprBookTitle.class, String.class, "(book name|title)", "itemstack");
+		register(ExprBookTitle.class, String.class, "book (name|title)", "itemtypes");
 	}
+	
+	private static final ItemType book = Aliases.javaItemType("book with text");
 	
 	@Override
 	protected String getPropertyName() {
@@ -51,10 +55,11 @@ public class ExprBookTitle extends SimplePropertyExpression<ItemStack,String> {
 	
 	@Nullable
 	@Override
-	public String convert(ItemStack itemStack) {
-		if (itemStack.getType() != Material.BOOK_AND_QUILL && itemStack.getType() != Material.WRITTEN_BOOK){
+	public String convert(ItemType item) {
+		ItemStack itemStack = item.getRandom();
+		assert itemStack != null;
+		if (!book.isOfType(itemStack))
 			return null;
-		}
 		return ((BookMeta) itemStack.getItemMeta()).getTitle();
 	}
 	
@@ -72,12 +77,12 @@ public class ExprBookTitle extends SimplePropertyExpression<ItemStack,String> {
 		return null;
 	}
 	
+	@SuppressWarnings("null")
 	@Override
 	public void change(Event e, @Nullable Object[] delta, Changer.ChangeMode mode) {
-		ItemStack itemStack = getExpr().getSingle(e);
-		if (itemStack == null || (itemStack.getType() != Material.WRITTEN_BOOK && itemStack.getType() != Material.BOOK_AND_QUILL)){
+		ItemStack itemStack = getExpr().getSingle(e).getRandom();
+		if (itemStack == null || !book.isOfType(itemStack))
 			return;
-		}
 		BookMeta bookMeta = (BookMeta) itemStack.getItemMeta();
 		switch (mode){
 			case SET:

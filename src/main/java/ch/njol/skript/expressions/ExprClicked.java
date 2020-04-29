@@ -58,17 +58,17 @@ import ch.njol.util.Kleenean;
 import ch.njol.util.coll.CollectionUtils;
 
 @Name("Clicked Block/Entity/Inventory/Slot")
-@Description("The clicked block, entity, inventory slot, inventory, type or action.")
+@Description("The clicked block, entity, inventory, inventory slot, inventory click type or inventory action.")
 @Examples({"message \"You clicked on a %type of clicked entity%!\"",
-		"clicked block is a chest:",
-		"	show the inventory of the clicked block to the player"})
+		"if the clicked block is a chest:",
+		"\tshow the inventory of the clicked block to the player"})
 @Since("1.0, 2.2-dev35 (more clickable things)")
 @Events({"click", "inventory click"})
 public class ExprClicked extends SimpleExpression<Object> {
 
 	private static enum ClickableType {
 		
-		BLOCK_AND_ITEMS(1, Block.class, "clicked block/itemtype/entity", " clicked (block|%-*itemtype/entitydata%)"),
+		BLOCK_AND_ITEMS(1, Block.class, "clicked block/itemtype/entity", "clicked (block|%-*itemtype/entitydata%)"),
 		SLOT(2, Slot.class, "clicked slot", "clicked slot"),
 		INVENTORY(3, Inventory.class, "clicked inventory", "clicked inventory"),
 		TYPE(4, ClickType.class, "click type", "click (type|action)"),
@@ -212,25 +212,6 @@ public class ExprClicked extends SimpleExpression<Object> {
 				return null;
 		}
 		return null;
-	}
-	
-	@Override
-	@Nullable
-	public Object[] beforeChange(Expression<?> changed, @Nullable Object[] delta) {
-		if (delta == null) // Nothing to nothing
-			return null;
-		Object first = delta[0];
-		if (first == null) // ConvertedExpression might cause this
-			return null;
-		
-		// Slots must be transformed to item stacks when writing to variables
-		// Documentation by Njol states so, plus it is convenient
-		if (changed instanceof Variable && first instanceof Slot) {
-			return new ItemStack[] {((Slot) first).getItem()};
-		}
-		
-		// Everything else (inventories, actions, etc.) does not need special handling
-		return delta;
 	}
 	
 	@Override
